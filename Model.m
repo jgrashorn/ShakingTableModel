@@ -17,8 +17,8 @@
 clear; close all;
 addpath("fct/");
 
-animate = 1; % use with caution
-saveAnimation = 1;
+animate = 0; % use with caution
+saveAnimation = 0;
 fName = 'pics/Plate';
 
 m = .210;
@@ -27,13 +27,23 @@ hSpring = 50; % height of springs, has no use currently
 
 I = [1/12 * m * (l(2).^2 + l(3).^2); 1/12*m*(l(1).^2+l(3).^2); 1/12*m*(l(1).^2 + l(2).^2)];
 
-stiffnessFactor = 25;
-rStiffnessFactor = 2500;
-kxNom = stiffnessFactor*10; kyNom = stiffnessFactor*15; kzNom = stiffnessFactor*15;
-krxNom = rStiffnessFactor*10; kryNom = rStiffnessFactor*15; krzNom = rStiffnessFactor*12;
+% ratios of spring stiffnesses
+xRatio = 1;
+yRatio = 5;
+zRatio = .5;
 
-randomStiffness = 0;
-rndFactor = .01;
+% rotational
+xRRatio = 1;
+yRRatio = 1;
+zRRatio = 10;
+
+stiffnessFactor = 250;
+rStiffnessFactor = 5000;
+kxNom = stiffnessFactor*xRatio; kyNom = stiffnessFactor*yRatio; kzNom = stiffnessFactor*zRatio;
+krxNom = rStiffnessFactor*xRRatio; kryNom = rStiffnessFactor*yRRatio; krzNom = rStiffnessFactor*zRRatio;
+
+randomStiffness = 1;
+rndFactor = .05;
 
 % upper positions of springs
 xA1_ = [l(1);-l(2);hSpring];
@@ -84,8 +94,8 @@ dx0 = zeros(6,1); % velocity of the plate
 % x0(5) = 2*pi/180;
 % x0(6) = 15*pi/180;
 
-D = 0.1*eye(3); % lateral damping
-Dr = 0.1*eye(3); % rotational damping
+D = 1*diag([.2,.5,.8]); % lateral damping
+Dr = 1*diag([.2,.5,.8]); % rotational damping
 
 inputSwitch = 2; % 1: fake, 2: real
 
@@ -103,7 +113,11 @@ switch inputSwitch
         %real input
         inp = load("input.mat","input");
         t = inp.input(:,1);
+        dt = t(2)-t(1);
+        tAdd = (t(end)+dt:dt:floor(t(end)*1.2));
+        t = [t;tAdd'];
         fxReal = inp.input(:,2);
+        fxReal = [fxReal;zeros(length(tAdd),1)];
         fx = @(t_) interp1(t,fxReal,t_); % interpolating for ode-functions
         f = @(t_) [fx(t_); 0; 0; 0; 0; 0];
     otherwise
@@ -185,6 +199,30 @@ for i=4:6
     plot(t,x(:,i));
 end
 legend({"$\theta_x$", "$\theta_y$","$\theta_z$"});
+
+%% response of corner A1 in x-direction
+
+try
+    tData = load("testingData.mat");
+    tMeas = tData.tMeas(tData.tMeas>1.41)-1.41;
+    dataMeas = -tData.xMeas(tData.tMeas>1.41);
+    figure; hold on;
+    plot(t,xA1(1,:)-inp(1,:)-r0(1,1));
+    plot(tMeas,dataMeas);
+    legend("Simulated","Measured");
+
+    [ampA1,fA1] = fourier(xA1(1,:)-r0(1,1),t);
+    [ampMeas,fMeas] = fourier(dataMeas,tMeas);
+
+    figure; hold on;
+    plot(fA1,ampA1);
+    plot(fMeas,ampMeas);
+    xlim([0,25])
+    legend("Simulated","Measured");
+    xlabel("Frequency [Hz]");ylabel("Amplitude");
+catch
+    warning("Test data not found, continuing...");
+end
 
 %% FFT plot
 [ampX,fX] = fourier(x(:,1),t);
