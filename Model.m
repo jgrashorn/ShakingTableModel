@@ -17,8 +17,8 @@
 clear; close all;
 addpath("fct/");
 
-animate = 0; % use with caution
-saveAnimation = 0;
+animate = 1; % use with caution
+saveAnimation = 1;
 fName = 'pics/Plate';
 
 m = .210;
@@ -27,23 +27,25 @@ hSpring = 50; % height of springs, has no use currently
 
 I = [1/12 * m * (l(2).^2 + l(3).^2); 1/12*m*(l(1).^2+l(3).^2); 1/12*m*(l(1).^2 + l(2).^2)];
 
-stiffnessFactor = 10;
-rStiffnessFactor = 10;
+stiffnessFactor = 25;
+rStiffnessFactor = 2500;
 kxNom = stiffnessFactor*10; kyNom = stiffnessFactor*15; kzNom = stiffnessFactor*15;
 krxNom = rStiffnessFactor*10; kryNom = rStiffnessFactor*15; krzNom = rStiffnessFactor*12;
 
-randomStiffness = 1;
+randomStiffness = 0;
 rndFactor = .01;
 
-xA1_ = [l(1);-l(2);-l(3)];
-xA2_ = [l(1);l(2);-l(3)];
-xA3_ = [-l(1);l(2);-l(3)];
-xA4_ = [-l(1);-l(2);-l(3)];
+% upper positions of springs
+xA1_ = [l(1);-l(2);hSpring];
+xA2_ = [l(1);l(2);hSpring];
+xA3_ = [-l(1);l(2);hSpring];
+xA4_ = [-l(1);-l(2);hSpring];
 
-xS1_ = xA1_ + [0;0;hSpring];
-xS2_ = xA2_ + [0;0;hSpring];
-xS3_ = xA3_ + [0;0;hSpring];
-xS4_ = xA4_ + [0;0;hSpring];
+% lower positions of springs (in case its needed, idk)
+xS1_ = xA1_ - [0;0;hSpring];
+xS2_ = xA2_ - [0;0;hSpring];
+xS3_ = xA3_ - [0;0;hSpring];
+xS4_ = xA4_ - [0;0;hSpring];
 
 switch randomStiffness
     case 0
@@ -70,28 +72,30 @@ r0 = [xA1_,xA2_,xA3_,xA4_]; % positions of upper end of springs
 rs0 = [xS1_,xS2_,xS3_,xS4_]; % positions of lower end of springs
 rP0 = [0;0;hSpring+l(3)]; % position of COM of plate
 
-x0 = zeros(6,1);
+% initial conditions
+x0 = zeros(6,1); % position of the plate
 x0(3) = -m*9.81/(sum(k(3,:))); % displacement due to gravity
-dx0 = zeros(6,1);
+dx0 = zeros(6,1); % velocity of the plate
 
-% x0(1) = 1;
+% x0(1) = 10;
 % x0(2) = 1;
 % x0(3) = 1;
-x0(4) = 5*pi/180;
+% x0(4) = 1*pi/180;
+% x0(5) = 2*pi/180;
 % x0(6) = 15*pi/180;
 
-D = 0.0*eye(3);
-Dr = 0.0*eye(3);
+D = 0.1*eye(3); % lateral damping
+Dr = 0.1*eye(3); % rotational damping
 
-inputSwitch = 1; % 1: fake, 2: real
+inputSwitch = 2; % 1: fake, 2: real
 
 switch inputSwitch
     case 1
         %fake input
-        T = 20;
+        T = 10;
         t = linspace(0,T,1000);
         % fx = @(t) 0*(5*sin(1.6*2*pi*t)+2*sin(4.3*2*pi*t)+sin(7*2*pi*t)).*(t<20);
-        fx = @(t) 0.0 *sin(7*2*pi*t);
+        fx = @(t) 1.0 *sin(1*2*pi*t);
 %         fx = @(t) 0 * t;
         fy = @(t) 0.0 * fx(t);
         f = @(t) [fx(t); fy(t); 0; 0; 0; 0];
@@ -100,15 +104,15 @@ switch inputSwitch
         inp = load("input.mat","input");
         t = inp.input(:,1);
         fxReal = inp.input(:,2);
-        fx = @(t_) interp1(t,fxReal,t_);
+        fx = @(t_) interp1(t,fxReal,t_); % interpolating for ode-functions
         f = @(t_) [fx(t_); 0; 0; 0; 0; 0];
     otherwise
         error("Schrödingers input")
 end
 
-dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,r0,rs0,m,I,D,Dr)];
+dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,r0,rs0,rP0,m,I,D,Dr)];
 
-[t,x] = ode23s(dxdt,t,[x0;dx0]);
+[t,x] = ode15s(dxdt,t,[x0;dx0]);
 
 %% corner point coordinates
 xA1 = zeros(3,length(t));
@@ -165,12 +169,17 @@ if animate
 end
 
 %% response plot
+inp = zeros(6,length(t));
+for i=1:length(t)
+    inp(:,i) = f(t(i));
+end
 figure;
 subplot(2,1,1); hold on;
 for i=1:3
+    plot(t,inp(i,:),'--');
     plot(t,x(:,i));
 end
-legend({"x","y","z"})
+legend({"$f_x$","x","$f_y$","y","$f_z$","z"})
 subplot(2,1,2); hold on;
 for i=4:6
     plot(t,x(:,i));
@@ -213,27 +222,34 @@ xlabel("x");ylabel("y");zlabel("z");
 
 %% Animation
 
-function [ddx] = Acc(x,dx,k,kr,r0,rs0,m,I,D,Dr)
+function [ddx] = Acc(x,dx,k,kr,r0,rs0,rP0,m,I,D,Dr)
 
     % Accelerations for the top plate,
     % x: state vector [3 positions, 3 rotations]
     % dx: velocity vector
     % k: 3x4 matrix containing x,y,z-stiffnesses of 4 springs
     % kr: 3x4 matrix of rotational stiffnesses
-    % r0: 3x4 matrix containing vectors from center of mass to corners
-    % rs0: 3x4 matrix containing vectors describing the spring height (unused atm)
+    % r0: 3x4 matrix containing vectors of spring positions (upper end)
+    % rs0: 3x4 matrix containing vectors of spring positions (lower end)
+    % rP0: 3x1 vector to COM of plate
     % m: plate mass
     % I: Moment of inertia of plate
     % D: translational damping
     % Dr: rotational damping
 
+    rP = rP0 + x(1:3); % actual position of the plate's COM
+
     ddx_k = zeros(3,1);
     ddx_r = zeros(3,1);
+
+    % Steiner
+    A = [0,-rP(3), rP(2)+x(2); rP(3)+x(3), 0, -rP(1); -rP(2), rP(1), 0];
+    I_S = diag(I) + m * (A') * A;
 
     for i=1:4
         ddx_k = ddx_k - Rotation(-x)*diag(k(:,i))*(x(1:3))./m - D*dx(1:3);
         ddx_r = ddx_r +(...
-            - (cross(r0(:,i),diag(k(:,i))*-Rotation(-x)*x(1:3)))./I... % Moments r \cross -kx
+            - I_S^-1 * (cross(r0(:,i)+x(1:3),diag(k(:,i))*-Rotation(-x)*x(1:3)))... % Moments r \cross -kx
             - cross(dx(4:6),diag(I)*dx(4:6))./I... % Drall (?)
             - diag(kr(:,i))*x(4:6)./I... % restoring moments of springs
             - Dr*dx(4:6)); % damping
@@ -242,4 +258,3 @@ function [ddx] = Acc(x,dx,k,kr,r0,rs0,m,I,D,Dr)
     ddx = [ddx_k-[0;0;9.81];ddx_r];
 
 end
-
