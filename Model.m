@@ -17,7 +17,7 @@
 clear; close all;
 addpath("fct/");
 
-animate = 0; % use with caution
+animate = 1; % use with caution
 saveAnimation = 0;
 fName = 'pics/Plate';
 
@@ -26,6 +26,7 @@ if animate && saveAnimation && ~strcmp(input("You sure you want to save the anim
 end
 
 useParticleFilter = 0;
+teapot = 0;
 
 m = .240;
 l = [75,75,15]*1e-3; %distance to center of mass of corners
@@ -146,12 +147,29 @@ end
 
 %% ANIMATION
 
-framerate = 30;
+framerate = 100;
 imgId = 1;
 oldT = 0;
 minZ = .1;
 
 if animate
+
+    if teapot
+        [verts_, faces, cindex] = teapotGeometry;
+        verts = zeros([size(verts_),length(t)]);
+        
+        for i=1:length(t)
+            verts(:,:,i) = (Rotation(x(i,:))*(verts_'+x(i,1:3)'*1e3))';
+        end
+    
+        xV = verts(:,1,:);
+        xL = [min(xV(:)),max(xV(:))];
+        yV = verts(:,2,:);
+        yL = [min(yV(:)),max(yV(:))];
+        zV = verts(:,3,:);
+        zL = [min(zV(:)),max(zV(:))];
+    end
+
     hFig = figure;
     for i=1:3
         plotLims{i} = [min([min(xA1(i,:)),min(xA2(i,:)),min(xA3(i,:)),min(xA4(i,:))]),...
@@ -164,32 +182,42 @@ if animate
     end
     
     for i=1:length(t)
-        xPlot = cell(3,1);
-        pPlot = cell(3,1);
-        fPlot = f(t(i));
-        for j=1:3
-            xPlot{j} = [xA1(j,i),xA2(j,i),xA3(j,i),xA4(j,i)];
-            pPlot_ = zeros(1,4);
-            if j==3
-                pPlot{j} = repmat(plotLims{3}(1),1,4);
-            else
-                for jj=1:4
-                    pPlot_(jj) = rs0(j,jj)+fPlot(j);
+        if teapot
+            clf;
+            patch('Faces',faces,'Vertices',squeeze(verts(:,:,i)),'FaceVertexCData',cindex,'FaceColor','interp');
+            view(3);
+            ylim(xL);
+            xlim(yL);
+            zlim(zL);
+        else
+            xPlot = cell(3,1);
+            pPlot = cell(3,1);
+            fPlot = f(t(i));
+            for j=1:3
+                xPlot{j} = [xA1(j,i),xA2(j,i),xA3(j,i),xA4(j,i)];
+                pPlot_ = zeros(1,4);
+                if j==3
+                    pPlot{j} = repmat(plotLims{3}(1),1,4);
+                else
+                    for jj=1:4
+                        pPlot_(jj) = rs0(j,jj)+fPlot(j);
+                    end
+                    pPlot{j} = pPlot_;
                 end
-                pPlot{j} = pPlot_;
             end
+            clf;
+            
+            xlim([plotLims{1}]);
+            ylim([plotLims{2}]);
+            zlim(plotLims{3});
+            hold on;
+            patch(xPlot{1},xPlot{2},xPlot{3},'m');
+            patch(pPlot{1},pPlot{2},pPlot{3},'g');
+            hold off;
+            view(3);
+            title(num2str(t(i)));
         end
-        clf;
-        
-        xlim([plotLims{1}]);
-        ylim([plotLims{2}]);
-        zlim(plotLims{3});
-        hold on;
-        patch(xPlot{1},xPlot{2},xPlot{3},'b');
-        patch(pPlot{1},pPlot{2},pPlot{3},'r');
-        hold off;
-        view(3);
-        title(num2str(t(i)));
+
         if saveAnimation
             if (t(i)-oldT)>1/framerate || imgId == 1
                 exportgraphics(hFig, [fName  num2str(imgId) '.tif']);
