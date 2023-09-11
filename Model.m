@@ -21,29 +21,35 @@ animate = 0; % use with caution
 saveAnimation = 0;
 fName = 'pics/Plate';
 
-m = .210;
-l = [75,75,15]; %distance to center of mass of corners
-hSpring = 50; % height of springs, has no use currently
+if animate && saveAnimation && ~strcmp(input("You sure you want to save the animation? y/n ",'s'),'y')
+    error("Aborting bc u dum")
+end
+
+useParticleFilter = 0;
+
+m = .240;
+l = [75,75,15]*1e-3; %distance to center of mass of corners
+hSpring = 100e-3; % height of springs
 
 I = [1/12 * m * (l(2).^2 + l(3).^2); 1/12*m*(l(1).^2+l(3).^2); 1/12*m*(l(1).^2 + l(2).^2)];
 
 % ratios of spring stiffnesses
 xRatio = 1;
-yRatio = 5;
-zRatio = .5;
+yRatio = 1;
+zRatio = 1;
 
 % rotational
 xRRatio = 1;
 yRRatio = 1;
-zRRatio = 10;
+zRRatio = 1;
 
-stiffnessFactor = 250;
-rStiffnessFactor = 5000;
+stiffnessFactor = 20;
+rStiffnessFactor = .5;
 kxNom = stiffnessFactor*xRatio; kyNom = stiffnessFactor*yRatio; kzNom = stiffnessFactor*zRatio;
 krxNom = rStiffnessFactor*xRRatio; kryNom = rStiffnessFactor*yRRatio; krzNom = rStiffnessFactor*zRRatio;
 
-randomStiffness = 1;
-rndFactor = .05;
+randomStiffness = 0;
+rndFactor = .02;
 
 % upper positions of springs
 xA1_ = [l(1);-l(2);hSpring];
@@ -87,25 +93,25 @@ x0 = zeros(6,1); % position of the plate
 x0(3) = -m*9.81/(sum(k(3,:))); % displacement due to gravity
 dx0 = zeros(6,1); % velocity of the plate
 
-% x0(1) = 10;
-% x0(2) = 1;
-% x0(3) = 1;
-% x0(4) = 1*pi/180;
-% x0(5) = 2*pi/180;
-% x0(6) = 15*pi/180;
+% x0(1) = -.01;
+% x0(2) = -.01;
+% x0(3) = -.01;
+% x0(4) = 10*pi/180;
+% x0(5) = -2*pi/180;
+% x0(6) = 2*pi/180;
 
-D = 1*diag([.2,.5,.8]); % lateral damping
-Dr = 1*diag([.2,.5,.8]); % rotational damping
+D = .0001*diag([1,1,1]); % lateral damping
+Dr = .00001*diag([1,1,1]); % rotational damping
 
 inputSwitch = 2; % 1: fake, 2: real
 
 switch inputSwitch
     case 1
         %fake input
-        T = 10;
+        T = 20;
         t = linspace(0,T,1000);
-        % fx = @(t) 0*(5*sin(1.6*2*pi*t)+2*sin(4.3*2*pi*t)+sin(7*2*pi*t)).*(t<20);
-        fx = @(t) 1.0 *sin(1*2*pi*t);
+        fx = @(t) 0*(.005*sin(1.6*2*pi*t)+.002*sin(4.3*2*pi*t)+.001*sin(7*2*pi*t)).*(t<20);
+        % fx = @(t) 1e-2 * (sin(7*2*pi*t) + sin(4.3*2*pi*t));
 %         fx = @(t) 0 * t;
         fy = @(t) 0.0 * fx(t);
         f = @(t) [fx(t); fy(t); 0; 0; 0; 0];
@@ -116,7 +122,7 @@ switch inputSwitch
         dt = t(2)-t(1);
         tAdd = (t(end)+dt:dt:floor(t(end)*1.2));
         t = [t;tAdd'];
-        fxReal = inp.input(:,2);
+        fxReal = inp.input(:,2)*1e-3;
         fxReal = [fxReal;zeros(length(tAdd),1)];
         fx = @(t_) interp1(t,fxReal,t_); % interpolating for ode-functions
         f = @(t_) [fx(t_); 0; 0; 0; 0; 0];
@@ -124,7 +130,7 @@ switch inputSwitch
         error("Schrödingers input")
 end
 
-dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,r0,rs0,rP0,m,I,D,Dr)];
+dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,D,Dr,r0,rs0,rP0,m,I)];
 
 [t,x] = ode15s(dxdt,t,[x0;dx0]);
 
@@ -143,6 +149,7 @@ end
 framerate = 30;
 imgId = 1;
 oldT = 0;
+minZ = .1;
 
 if animate
     hFig = figure;
@@ -150,24 +157,37 @@ if animate
         plotLims{i} = [min([min(xA1(i,:)),min(xA2(i,:)),min(xA3(i,:)),min(xA4(i,:))]),...
                        max([max(xA1(i,:)),max(xA2(i,:)),max(xA3(i,:)),max(xA4(i,:))])];
     end
-    if plotLims{3}(2)-plotLims{3}(1) < 5
+    if plotLims{3}(2)-plotLims{3}(1) < minZ
         plotLimsDist = plotLims{3}(2)-plotLims{3}(1);
-        plotLims{3}(1) = plotLims{3}(1)-(2.5-(plotLimsDist/2));
-        plotLims{3}(2) = plotLims{3}(2)+(2.5-(plotLimsDist/2));
+        plotLims{3}(1) = plotLims{3}(1)-(minZ/2-(plotLimsDist/2));
+        plotLims{3}(2) = plotLims{3}(2)+(minZ/2-(plotLimsDist/2));
     end
     
     for i=1:length(t)
         xPlot = cell(3,1);
+        pPlot = cell(3,1);
+        fPlot = f(t(i));
         for j=1:3
             xPlot{j} = [xA1(j,i),xA2(j,i),xA3(j,i),xA4(j,i)];
+            pPlot_ = zeros(1,4);
+            if j==3
+                pPlot{j} = repmat(plotLims{3}(1),1,4);
+            else
+                for jj=1:4
+                    pPlot_(jj) = rs0(j,jj)+fPlot(j);
+                end
+                pPlot{j} = pPlot_;
+            end
         end
         clf;
         
         xlim([plotLims{1}]);
         ylim([plotLims{2}]);
         zlim(plotLims{3});
-    
+        hold on;
         patch(xPlot{1},xPlot{2},xPlot{3},'b');
+        patch(pPlot{1},pPlot{2},pPlot{3},'r');
+        hold off;
         view(3);
         title(num2str(t(i)));
         if saveAnimation
@@ -177,7 +197,7 @@ if animate
                 imgId = imgId + 1;
             end
         else
-            pause(.01);
+            pause(.005);
         end
     end
 end
@@ -205,7 +225,7 @@ legend({"$\theta_x$", "$\theta_y$","$\theta_z$"});
 try
     tData = load("testingData.mat");
     tMeas = tData.tMeas(tData.tMeas>1.41)-1.41;
-    dataMeas = -tData.xMeas(tData.tMeas>1.41);
+    dataMeas = -tData.xMeas(tData.tMeas>1.41)*1e-3;
     figure; hold on;
     plot(t,xA1(1,:)-inp(1,:)-r0(1,1));
     plot(tMeas,dataMeas);
@@ -222,6 +242,98 @@ try
     xlabel("Frequency [Hz]");ylabel("Amplitude");
 catch
     warning("Test data not found, continuing...");
+end
+
+%% Particle filter
+
+if useParticleFilter
+    close all
+    
+    mult0 = 1*[1.6,1.4,0.8]'.*[1.2,1.5,0.8,1];
+    dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),mult0.*k,kr,D,Dr,r0,rs0,rP0,m,I)];
+    % [~,xM] = ode15s(dxdt,t,[x0;dx0]);
+    
+    dxdtPF = @(mpl) @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),mpl.*k,kr,D,Dr,r0,rs0,rP0,m,I)];
+
+    % t_Start = 1.40;
+    % inpFile = load("testingData.mat","AU","tMeas","xMeas");
+    % t = inpFile.tMeas(inpFile.tMeas>t_Start);
+    % t = t-t_Start;
+    % dt = t(2)-t(1);
+    % fxReal = inpFile.AU(inpFile.tMeas>t_Start);
+    % fx = @(t_) interp1(t,fxReal,t_); % interpolating for ode-functions
+    % f = @(t_) [fx(t_); 0; 0; 0; 0; 0];
+    
+    % sttrns = StateTransition([x0;dx0;1;[1;1;1]],dxdtPF,[0,.01]);
+    
+    pf = stateEstimatorPF;
+    pf.StateEstimationMethod = 'mean';
+    pf.ResamplingMethod = 'multinomial';
+    
+    pf.StateTransitionFcn = @StateTransition;
+    pf.MeasurementLikelihoodFcn = @Likelihood;
+    
+    nParticles = 1000;
+
+    initState = [x0;dx0;.1;1.1;1.05;.9;1.1;1.2;.9;.9]';
+    
+    initialize(pf, nParticles, initState,diag([zeros(12,1);.02;.2;.2;.2;.2;.2;.2;.2]).*eye(20));
+    
+    measurement(1,:) = (xA1(1,:)-inp(1,:)-r0(1,1));
+    measurement(2,:) = (xA1(2,:)-r0(2,1));
+    measurement(3,:) = (xA1(3,:)-r0(3,1));
+    
+    % measurement = measurement;
+    measurementNoise = measurement.*(1+randn(size(measurement))/10);    
+
+    % updateData = inpFile.xMeas(inpFile.tMeas>t_Start);
+    updateData = measurementNoise;
+
+    statePred = zeros(length(t),pf.NumStateVariables);
+    statePred(1,:) = initState';
+    stateCorrected = zeros(length(t),pf.NumStateVariables);
+
+    inp = zeros(6,length(t));
+    for i=1:length(t)
+        inp(:,i) = f(t(i));
+    end
+    
+    toPlotIdx = randperm(nParticles,50);
+    figure;
+    clrs = {'b','r','k'};
+    for i=2:length(t)
+        
+        if i==1
+            [statePred(i,:),covPred] = predict(pf,dxdtPF,[0,t(i)]);
+        else
+            [statePred(i,:),covPred] = predict(pf,dxdtPF,[t(i-1),t(i)]);
+        end
+        [stateCorrected(i,:), covCorrected] = correct(pf, updateData(:,i)',f(t(i)));
+    
+        if mod(i,5)==0
+            fprintf("State %d of %d\n",i,length(t));
+            clf;
+            subplot(2,1,1);
+            hold on;
+            for j=1:size(updateData,1)
+                clear plotState
+                for ii=1:i
+                    plotState(:,ii) = Rotation(stateCorrected(ii,1:6))*stateCorrected(ii,1:3)'-inp(j,ii);
+                end
+                    plot(t(1:i),plotState(j,:),[clrs{j} '-']);
+                    plot(t(1:i),updateData(j,1:i),[clrs{j} '--']);
+                    % plot(t(1:i),measurementNoise(1:i,j));
+            end
+            legend("x","","y","","z","");
+            subplot(2,1,2);
+            hold on;
+            for j=1:pf.NumStateVariables-12
+                plot(t(1:i),statePred(1:i,12+j))
+            end
+            drawnow;
+        end
+    
+    end
 end
 
 %% FFT plot
@@ -257,42 +369,43 @@ plot3(xA4(1,:),xA4(2,:),xA4(3,:));
 view(3)
 xlabel("x");ylabel("y");zlabel("z");
 
+%% functions
 
-%% Animation
+function [stateOut] = StateTransition(pf,state,dxdtF,t)
 
-function [ddx] = Acc(x,dx,k,kr,r0,rs0,rP0,m,I,D,Dr)
-
-    % Accelerations for the top plate,
-    % x: state vector [3 positions, 3 rotations]
-    % dx: velocity vector
-    % k: 3x4 matrix containing x,y,z-stiffnesses of 4 springs
-    % kr: 3x4 matrix of rotational stiffnesses
-    % r0: 3x4 matrix containing vectors of spring positions (upper end)
-    % rs0: 3x4 matrix containing vectors of spring positions (lower end)
-    % rP0: 3x1 vector to COM of plate
-    % m: plate mass
-    % I: Moment of inertia of plate
-    % D: translational damping
-    % Dr: rotational damping
-
-    rP = rP0 + x(1:3); % actual position of the plate's COM
-
-    ddx_k = zeros(3,1);
-    ddx_r = zeros(3,1);
-
-    % Steiner
-    A = [0,-rP(3), rP(2)+x(2); rP(3)+x(3), 0, -rP(1); -rP(2), rP(1), 0];
-    I_S = diag(I) + m * (A') * A;
-
-    for i=1:4
-        ddx_k = ddx_k - Rotation(-x)*diag(k(:,i))*(x(1:3))./m - D*dx(1:3);
-        ddx_r = ddx_r +(...
-            - I_S^-1 * (cross(r0(:,i)+x(1:3),diag(k(:,i))*-Rotation(-x)*x(1:3)))... % Moments r \cross -kx
-            - cross(dx(4:6),diag(I)*dx(4:6))./I... % Drall (?)
-            - diag(kr(:,i))*x(4:6)./I... % restoring moments of springs
-            - Dr*dx(4:6)); % damping
+    stateOut = zeros(size(state));
+    parfor i=1:size(state,1)
+        kMpl = state(i,14:16);
+        AMpl = state(i,17:20);
+    
+        dxdt = dxdtF(kMpl'.*AMpl);
+    
+        [~,stateOut_] = ode15s(dxdt,t,state(i,1:12)');
+        stateOut_ = stateOut_(end,:);
+        stateOut(i,:) = [stateOut_,state(i,13:pf.NumStateVariables)];
     end
 
-    ddx = [ddx_k-[0;0;9.81];ddx_r];
+end
+
+function [out] = Likelihood(pf,state,msm,f)
+
+    if any(state(13:pf.NumStateVariables)<1e-6)
+        out = zeros(size(state,1),1);
+        return
+    end
+
+    for i=1:size(state,1)
+        
+        pred(i,:) = Rotation(state(i,1:6))*state(i,1:3)'-f(1:3);
+
+    end
+
+    out = ones(size(state,1),1);
+
+    meas = msm;
+    
+    for i=1:size(msm,2)
+        out = out.*normpdf(pred(:,i),meas(:,i),state(13));
+    end
 
 end
