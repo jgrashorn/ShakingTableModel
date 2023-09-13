@@ -17,12 +17,12 @@
 clear; close all;
 addpath("fct/");
 
-animate = 1; % use with caution
+animate = 0; % use with caution
 saveAnimation = 0;
 fName = 'pics/Plate';
 
 if animate && saveAnimation && ~strcmp(input("You sure you want to save the animation? y/n ",'s'),'y')
-    error("Aborting bc u dum")
+    error("Canceled")
 end
 
 useParticleFilter = 0;
@@ -36,8 +36,8 @@ I = [1/12 * m * (l(2).^2 + l(3).^2); 1/12*m*(l(1).^2+l(3).^2); 1/12*m*(l(1).^2 +
 
 % ratios of spring stiffnesses
 xRatio = 1;
-yRatio = 1;
-zRatio = 1;
+yRatio = 2;
+zRatio = .8;
 
 % rotational
 xRRatio = 1;
@@ -91,7 +91,7 @@ rP0 = [0;0;hSpring+l(3)]; % position of COM of plate
 
 % initial conditions
 x0 = zeros(6,1); % position of the plate
-x0(3) = -m*9.81/(sum(k(3,:))); % displacement due to gravity
+% x0(3) = -m*9.81/(sum(k(3,:))); % displacement due to gravity
 dx0 = zeros(6,1); % velocity of the plate
 
 % x0(1) = -.01;
@@ -104,15 +104,15 @@ dx0 = zeros(6,1); % velocity of the plate
 D = .0001*diag([1,1,1]); % lateral damping
 Dr = .00001*diag([1,1,1]); % rotational damping
 
-inputSwitch = 2; % 1: fake, 2: real
+inputSwitch = 1; % 1: fake, 2: real
 
 switch inputSwitch
     case 1
         %fake input
         T = 20;
         t = linspace(0,T,1000);
-        fx = @(t) 0*(.005*sin(1.6*2*pi*t)+.002*sin(4.3*2*pi*t)+.001*sin(7*2*pi*t)).*(t<20);
-        % fx = @(t) 1e-2 * (sin(7*2*pi*t) + sin(4.3*2*pi*t));
+        fx = @(t) 1* (.005*sin(1.6*2*pi*t)+.002*sin(4.3*2*pi*t)+.001*sin(7*2*pi*t)).*(t<20);
+        % fx = @(t) 8e-3 * sin(12*2*pi*t);
 %         fx = @(t) 0 * t;
         fy = @(t) 0.0 * fx(t);
         f = @(t) [fx(t); fy(t); 0; 0; 0; 0];
@@ -131,7 +131,7 @@ switch inputSwitch
         error("Schrödingers input")
 end
 
-dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,D,Dr,r0,rs0,rP0,m,I)];
+dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,D,Dr,r0,rP0,m,I)];
 
 [t,x] = ode15s(dxdt,t,[x0;dx0]);
 
@@ -277,45 +277,23 @@ end
 if useParticleFilter
     close all
     
-    mult0 = 1*[1.6,1.4,0.8]'.*[1.2,1.5,0.8,1];
-    dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),mult0.*k,kr,D,Dr,r0,rs0,rP0,m,I)];
-    % [~,xM] = ode15s(dxdt,t,[x0;dx0]);
-    
-    dxdtPF = @(mpl) @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),mpl.*k,kr,D,Dr,r0,rs0,rP0,m,I)];
+    mult0 = [.5,.5,.5]';
+    dxdtPF = @(mpl) @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),mpl.*k,kr,D,Dr,r0,rP0,m,I)];
 
-    % t_Start = 1.40;
-    % inpFile = load("testingData.mat","AU","tMeas","xMeas");
-    % t = inpFile.tMeas(inpFile.tMeas>t_Start);
-    % t = t-t_Start;
-    % dt = t(2)-t(1);
-    % fxReal = inpFile.AU(inpFile.tMeas>t_Start);
-    % fx = @(t_) interp1(t,fxReal,t_); % interpolating for ode-functions
-    % f = @(t_) [fx(t_); 0; 0; 0; 0; 0];
-    
-    % sttrns = StateTransition([x0;dx0;1;[1;1;1]],dxdtPF,[0,.01]);
+    [~,xM] = ode15s(dxdtPF(mult0),t,[x0;dx0]);
     
     pf = stateEstimatorPF;
     pf.StateEstimationMethod = 'mean';
-    pf.ResamplingMethod = 'multinomial';
+    pf.ResamplingMethod = 'systematic';
     
     pf.StateTransitionFcn = @StateTransition;
     pf.MeasurementLikelihoodFcn = @Likelihood;
     
-    nParticles = 1000;
+    nParticles = 2500;
 
-    initState = [x0;dx0;.1;1.1;1.05;.9;1.1;1.2;.9;.9]';
+    initState = [x0;dx0;.3;1;1;1]';
     
-    initialize(pf, nParticles, initState,diag([zeros(12,1);.02;.2;.2;.2;.2;.2;.2;.2]).*eye(20));
-    
-    measurement(1,:) = (xA1(1,:)-inp(1,:)-r0(1,1));
-    measurement(2,:) = (xA1(2,:)-r0(2,1));
-    measurement(3,:) = (xA1(3,:)-r0(3,1));
-    
-    % measurement = measurement;
-    measurementNoise = measurement.*(1+randn(size(measurement))/10);    
-
-    % updateData = inpFile.xMeas(inpFile.tMeas>t_Start);
-    updateData = measurementNoise;
+    initialize(pf, nParticles, initState, diag([0.0*ones(12,1);.02;.2;.2;.2]).*eye(16));
 
     statePred = zeros(length(t),pf.NumStateVariables);
     statePred(1,:) = initState';
@@ -325,6 +303,12 @@ if useParticleFilter
     for i=1:length(t)
         inp(:,i) = f(t(i));
     end
+
+    measurement = xM(:,1:3)';
+    % measurement = measurement;
+    measurementNoise = measurement.*(1+randn(size(measurement))/5);
+    % updateData = inpFile.xMeas(inpFile.tMeas>t_Start);
+    updateData = measurementNoise-inp(1:3,:);
     
     toPlotIdx = randperm(nParticles,50);
     figure;
@@ -348,11 +332,12 @@ if useParticleFilter
                 for ii=1:i
                     plotState(:,ii) = Rotation(stateCorrected(ii,1:6))*stateCorrected(ii,1:3)'-inp(j,ii);
                 end
-                    plot(t(1:i),plotState(j,:),[clrs{j} '-']);
-                    plot(t(1:i),updateData(j,1:i),[clrs{j} '--']);
-                    % plot(t(1:i),measurementNoise(1:i,j));
+                plot(t(1:i),plotState(j,:),[clrs{j} '-']);
+                plot(t(1:i),updateData(j,1:i),[clrs{j} '--']);
+                % plot(t(1:i),measurementNoise(1:i,j));
             end
-            legend("x","","y","","z","");
+            legend("x","","y","","z","",'Location','southwest');
+            ylim([min(min(updateData(:,1:i))),max(max(updateData(:,1:i)))]);    
             subplot(2,1,2);
             hold on;
             for j=1:pf.NumStateVariables-12
@@ -402,38 +387,39 @@ xlabel("x");ylabel("y");zlabel("z");
 function [stateOut] = StateTransition(pf,state,dxdtF,t)
 
     stateOut = zeros(size(state));
+    nV = pf.NumStateVariables;
     parfor i=1:size(state,1)
-        kMpl = state(i,14:16);
-        AMpl = state(i,17:20);
+        kMpl = state(i,14:16)';
     
-        dxdt = dxdtF(kMpl'.*AMpl);
+        dxdt = dxdtF(kMpl);
     
         [~,stateOut_] = ode15s(dxdt,t,state(i,1:12)');
         stateOut_ = stateOut_(end,:);
-        stateOut(i,:) = [stateOut_,state(i,13:pf.NumStateVariables)];
+        stateOut(i,:) = [stateOut_,state(i,13:nV)];
     end
 
 end
 
 function [out] = Likelihood(pf,state,msm,f)
 
-    if any(state(13:pf.NumStateVariables)<1e-6)
-        out = zeros(size(state,1),1);
-        return
-    end
-
-    for i=1:size(state,1)
-        
-        pred(i,:) = Rotation(state(i,1:6))*state(i,1:3)'-f(1:3);
-
-    end
+    % if any(state(:,13:pf.NumStateVariables)<1e-6)
+    %     out = zeros(size(state,1),1);
+    %     return
+    % end
 
     out = ones(size(state,1),1);
+    stateInd = state(:,13:16)<1e-6;
 
-    meas = msm;
+    % meas = msm'-f(1:size(msm,2));
+    % pred = state(:,1:3)-f(1:3)';
+
+    meas = msm';
+    pred = state(:,1:3)-f(1:3)';
     
-    for i=1:size(msm,2)
-        out = out.*normpdf(pred(:,i),meas(:,i),state(13));
+    for i=1:size(msm,1)
+        out = out.*normpdf(pred(:,i),meas(i,:)',state(:,13)).*(sum(stateInd,2)==0);
     end
+
+    out(isnan(out)) = 0;
 
 end

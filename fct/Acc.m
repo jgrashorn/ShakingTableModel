@@ -1,4 +1,4 @@
-function [ddx] = Acc(x,dx,k,kr,D,Dr,r0,rs0,rP0,m,I)
+function [ddx] = Acc(x,dx,k,kr,D,Dr,rS0,rP0,m,I)
 
     % Accelerations for the top plate,
     % x: state vector [3 positions, 3 rotations]
@@ -13,8 +13,8 @@ function [ddx] = Acc(x,dx,k,kr,D,Dr,r0,rs0,rP0,m,I)
     % D: translational damping
     % Dr: rotational damping
 
-    rS = Rotation(x)*(x(1:3)+r0); % actual position of the top of the springs
-    rD = rS-r0;
+    rS = Rotation(x)*(x(1:3)+rS0); % actual position of the top of the springs
+    rD = rS-rS0;
     rP = rP0-rS;
 
     ddx_k = zeros(3,1);
@@ -38,6 +38,6 @@ function [ddx] = Acc(x,dx,k,kr,D,Dr,r0,rs0,rP0,m,I)
             - Dr*dx(4:6)./I); % damping
     end
 
-    ddx = [ddx_k-[0;0;9.81];ddx_r];
+    ddx = [ddx_k-[0;0;0];ddx_r];
 
 end
