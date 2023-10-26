@@ -35,3 +35,10 @@ octave-workspace
 /pics
 /Doc
 /TestData
+/Plots
+/plots
+
+*.gif
+*.png
+*.mat
+*.fig

@@ -1,6 +1,6 @@
-function [ddx] = Acc(x,dx,k,kr,D,Dr,rS0,rP0,m,I)
+function [ddx] = Acc(x,dx,k,kr,D,Dr,r0,rS0,rP0,m,I)
 
-    % Accelerations for the top plate,
+    % ACC Accelerations for the top plate,
     % x: state vector [3 positions, 3 rotations]
     % dx: velocity vector
     % k: 3x4 matrix containing x,y,z-stiffnesses of 4 springs
@@ -13,9 +13,11 @@ function [ddx] = Acc(x,dx,k,kr,D,Dr,rS0,rP0,m,I)
     % D: translational damping
     % Dr: rotational damping
 
-    rS = Rotation(x)*(x(1:3)+rS0); % actual position of the top of the springs
-    rD = rS-rS0;
-    rP = rP0-rS;
+    rS = x(1:3)+Rotation(x)*r0; % actual position of the top of the springs
+    rD = rS-r0; % displacement of the springs
+    % rP = rS-rS0; % bottom of springs to top of springs
+    rU = r0-rP0; % center of mass to top of springs
+    rL = rP0-rS0+x(1:3); % center of mass to bottom of springs
 
     ddx_k = zeros(3,1);
     ddx_r = zeros(3,1);
@@ -24,20 +26,25 @@ function [ddx] = Acc(x,dx,k,kr,D,Dr,rS0,rP0,m,I)
 
     % Steiner
     for i=1:4
-        A = [0,-rP(3,i), rP(2,i); rP(3,i), 0, -rP(1,i); -rP(2,i), rP(1,i), 0];
+        A = [0,-rU(3,i), rU(2,i); rU(3,i), 0, -rU(1,i); -rU(2,i), rU(1,i), 0];
         I_S(:,:,i) = diag(I) + m * (A') * A;
     end
 
+    ddx_k = zeros(3,4);
+    ddx_r = zeros(3,4);
+
     for i=1:4
-        F_r = diag(-k(:,i))*rD(:,i);
-        ddx_k = ddx_k + F_r./m - D*dx(1:3)/m;
-        ddx_r = ddx_r +(...
-            - I_S(:,:,i)^-1 * (cross(rS(:,i),F_r))... % Moments r \cross -kx
+        F_r = Rotation(x)*-diag(k(:,i))*rD(:,i) - [0;0;m*9.81];
+        F_d = Rotation(x)*-D*(dx(1:3)+cross(dx(4:6),rU(:,i)));
+        ddx_k(:,i) = F_r./m + F_d./m; %- D*dx(1:3)/m;
+        ddx_r(:,i) = (...
+            - (cross(rL(:,i),F_r))./I... % Moments r \cross -kx
+            - (cross(rL(:,i),F_d))./I... % Moments due to damping?
             - cross(dx(4:6),diag(I)*dx(4:6))./I... % Drall (?)
             - diag(kr(:,i))*x(4:6)./I... % restoring moments of springs
             - Dr*dx(4:6)./I); % damping
     end
 
-    ddx = [ddx_k-[0;0;0];ddx_r];
+    ddx = [sum(ddx_k,2);sum(ddx_r,2)];
 
 end
