@@ -17,9 +17,9 @@
 clear; close all;
 addpath("fct/");
 
-animate = 0; % use with caution
+animate = 1; % use with caution
 saveAnimation = 0;
-fName = 'pics/Plate';
+fName = 'pics/schwabbel';
 
 if animate && saveAnimation && ~strcmp(input("You sure you want to save the animation? y/n ",'s'),'y')
     error("Canceled")
@@ -36,27 +36,30 @@ I = [1/12 * m * (l(2).^2 + l(3).^2); 1/12*m*(l(1).^2+l(3).^2); 1/12*m*(l(1).^2 +
 
 % ratios of spring stiffnesses
 xRatio = 1;
-yRatio = 2;
+yRatio = 1.2;
 zRatio = .8;
 
 % rotational
 xRRatio = 1;
-yRRatio = 1;
-zRRatio = 1;
+yRRatio = 1.5;
+zRRatio = .8;
 
-stiffnessFactor = 20;
-rStiffnessFactor = .5;
+stiffnessFactor = 100;
+rStiffnessFactor = 0;
 kxNom = stiffnessFactor*xRatio; kyNom = stiffnessFactor*yRatio; kzNom = stiffnessFactor*zRatio;
 krxNom = rStiffnessFactor*xRRatio; kryNom = rStiffnessFactor*yRRatio; krzNom = rStiffnessFactor*zRRatio;
 
-randomStiffness = 0;
-rndFactor = .02;
+D = 2*diag([1,1,1]); % lateral damping
+Dr = 0e-6*diag([1,1,1]); % rotational damping
+
+randomStiffness = 1;
+rndFactor = .05;
 
 % upper positions of springs
-xA1_ = [l(1);-l(2);hSpring];
-xA2_ = [l(1);l(2);hSpring];
-xA3_ = [-l(1);l(2);hSpring];
-xA4_ = [-l(1);-l(2);hSpring];
+xA1_ = [l(1);-l(2);-l(3)/2];
+xA2_ = [l(1);l(2);-l(3)/2];
+xA3_ = [-l(1);l(2);-l(3)/2];
+xA4_ = [-l(1);-l(2);-l(3)/2];
 
 % lower positions of springs (in case its needed, idk)
 xS1_ = xA1_ - [0;0;hSpring];
@@ -87,7 +90,7 @@ kr = repmat([krxNom;kryNom;krzNom],1,4);
 
 r0 = [xA1_,xA2_,xA3_,xA4_]; % positions of upper end of springs
 rs0 = [xS1_,xS2_,xS3_,xS4_]; % positions of lower end of springs
-rP0 = [0;0;hSpring+l(3)]; % position of COM of plate
+rP0 = [.03;.03;0]; % position of COM of plate
 
 % initial conditions
 x0 = zeros(6,1); % position of the plate
@@ -95,27 +98,38 @@ x0 = zeros(6,1); % position of the plate
 dx0 = zeros(6,1); % velocity of the plate
 
 % x0(1) = -.01;
-% x0(2) = -.01;
-% x0(3) = -.01;
-% x0(4) = 10*pi/180;
-% x0(5) = -2*pi/180;
-% x0(6) = 2*pi/180;
+% x0(2) = -.001;
+% x0(3) = -m*9.81/sum(k(3,:));
+% x0(4) = 5*pi/180;
+% x0(5) = -5*pi/180;
+% x0(6) = 10*pi/180;
 
-D = .0001*diag([1,1,1]); % lateral damping
-Dr = .00001*diag([1,1,1]); % rotational damping
+inputSwitch = 3; % 1: fake, 2: real
 
-inputSwitch = 1; % 1: fake, 2: real
+fprintf("Calculating zero position...\n");
+dxdt = @(t,x) [x(7:12);Acc((x(1:6)),x(7:12),k,kr,D,Dr,r0,rs0,rP0,m,I)];
+[~,x0_] = ode15s(dxdt,[0,30],[x0;dx0]);
+x0 = x0_(end,1:6)';
+dx0 = x0_(end,7:12)';
+fprintf("Done.\n")
 
 switch inputSwitch
     case 1
         %fake input
-        T = 20;
+        T = 10;
         t = linspace(0,T,1000);
-        fx = @(t) 1* (.005*sin(1.6*2*pi*t)+.002*sin(4.3*2*pi*t)+.001*sin(7*2*pi*t)).*(t<20);
-        % fx = @(t) 8e-3 * sin(12*2*pi*t);
+        % fx = @(t) 1* (.005*sin(1.6*2*pi*t)+.002*sin(4.3*2*pi*t)+.001*sin(7*2*pi*t)).*(t<20);
+        % vx = @(t) (.005*1.6*2*pi*cos(1.6*2*pi*t) + .002*4.3*2*pi*cos(4.3*2*pi*t)+.001*7*2*pi*cos(7*2*pi*t)).*(t<20);
+        freq = 7.8;
+        fx = @(t) 5e-3 * sin(freq*2*pi*t);
+        vx = @(t) 5e-3 * freq*2*pi*cos(freq*2*pi*t);
 %         fx = @(t) 0 * t;
         fy = @(t) 0.0 * fx(t);
+        vy = @(t) 0.0 * vx(t);
         f = @(t) [fx(t); fy(t); 0; 0; 0; 0];
+        v = @(t) [vx(t); vy(t); 0; 0; 0; 0];
+        % f = @(t) zeros(6,1);
+        % v = @(t) zeros(6,1);
     case 2
         %real input
         inp = load("input.mat","input");
@@ -127,11 +141,30 @@ switch inputSwitch
         fxReal = [fxReal;zeros(length(tAdd),1)];
         fx = @(t_) interp1(t,fxReal,t_); % interpolating for ode-functions
         f = @(t_) [fx(t_); 0; 0; 0; 0; 0];
+        vxReal(1) = 0;
+        vxReal(2:length(t)) = diff(fxReal)./(dt);
+        vx = @(t_) interp1(t,vxReal,t_);
+        v = @(t_) [vx(t_); 0; 0; 0; 0; 0];
+    case 3
+        %PSD input
+        inp = load("realData_PSD.mat","xTable","dxTable","tSim");
+        t = inp.tSim';
+        dt = t(2)-t(1);
+        tAdd = (t(end)+dt:dt:floor(t(end)*1.2));
+        t = [t;tAdd'];
+        fxReal = inp.xTable*1e-3;
+        fxReal = [fxReal;zeros(length(tAdd),1)];
+        fx = @(t_) interp1(t,fxReal,t_); % interpolating for ode-functions
+        f = @(t_) [2*fx(t_); 0; 0; 0; 0; 0];
+        vxReal(1) = 0;
+        vxReal(2:length(t)) = diff(fxReal)./(dt);
+        vx = @(t_) interp1(t,vxReal,t_);
+        v = @(t_) [2*vx(t_); 0; 0; 0; 0; 0];
     otherwise
         error("Schrödingers input")
 end
 
-dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,D,Dr,r0,rP0,m,I)];
+dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12)-v(t),k,kr,D,Dr,r0,rs0,rP0,m,I)];
 
 [t,x] = ode15s(dxdt,t,[x0;dx0]);
 
@@ -139,10 +172,10 @@ dxdt = @(t,x) [x(7:12);Acc((x(1:6)-f(t)),x(7:12),k,kr,D,Dr,r0,rP0,m,I)];
 xA1 = zeros(3,length(t));
 xA2 = xA1; xA3 = xA1; xA4 = xA1;
 for i=1:length(t)
-    xA1(:,i) = Rotation(x(i,:))*(x(i,1:3)' + r0(:,1));
-    xA2(:,i) = Rotation(x(i,:))*(x(i,1:3)' + r0(:,2));
-    xA3(:,i) = Rotation(x(i,:))*(x(i,1:3)' + r0(:,3));
-    xA4(:,i) = Rotation(x(i,:))*(x(i,1:3)' + r0(:,4));
+    xA1(:,i) = x(i,1:3)' + Rotation(x(i,:))*(r0(:,1));
+    xA2(:,i) = x(i,1:3)' + Rotation(x(i,:))*(r0(:,2));
+    xA3(:,i) = x(i,1:3)' + Rotation(x(i,:))*(r0(:,3));
+    xA4(:,i) = x(i,1:3)' + Rotation(x(i,:))*(r0(:,4));
 end
 
 %% ANIMATION
@@ -159,7 +192,7 @@ if animate
         verts = zeros([size(verts_),length(t)]);
         
         for i=1:length(t)
-            verts(:,:,i) = (Rotation(x(i,:))*(verts_'+x(i,1:3)'*1e3))';
+            verts(:,:,i) = x(i,1:3)'*1e3 + (Rotation(x(i,:))*(verts_'))';
         end
     
         xV = verts(:,1,:);
@@ -255,11 +288,13 @@ try
     tMeas = tData.tMeas(tData.tMeas>1.41)-1.41;
     dataMeas = -tData.xMeas(tData.tMeas>1.41)*1e-3;
     figure; hold on;
-    plot(t,xA1(1,:)-inp(1,:)-r0(1,1));
+    % plot(t,xA1(1,:)-inp(1,:)-r0(1,1));
+    plot(t,x(:,1)-inp(1,:)');
     plot(tMeas,dataMeas);
+    plot(t,inp(1,:));
     legend("Simulated","Measured");
 
-    [ampA1,fA1] = fourier(xA1(1,:)-r0(1,1),t);
+    [ampA1,fA1] = fourier(x(:,i)-inp(1,:)',t);
     [ampMeas,fMeas] = fourier(dataMeas,tMeas);
 
     figure; hold on;
